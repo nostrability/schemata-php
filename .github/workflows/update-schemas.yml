@@ -1,0 +1,29 @@
+name: Update schemas
+on:
+  repository_dispatch: { types: [schema-update] }
+  workflow_dispatch:
+    inputs: { tag: { description: 'Schemata release tag', required: true } }
+permissions: { contents: write }
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        run: |
+          TAG="${{ github.event.client_payload.tag || github.event.inputs.tag || '' }}"
+          [ -z "$TAG" ] && TAG=$(curl -sI https://github.com/nostrability/schemata/releases/latest | grep -i '^location:' | sed 's|.*/||' | tr -d '\r\n')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+      - run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          curl -sL "https://github.com/nostrability/schemata/releases/download/${TAG}/schemata-${TAG}.zip" -o /tmp/s.zip
+          unzip -qo /tmp/s.zip -d /tmp/sd
+          rm -rf schemas/nips schemas/mips schemas/@
+          cp -r /tmp/sd/nips /tmp/sd/mips schemas/
+          cp -r "/tmp/sd/@" schemas/@
+          echo "$TAG" > schemas/SCHEMATA_VERSION
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --staged --quiet || (git commit -m "chore: update schemas to ${{ steps.tag.outputs.tag }}" && git push)
